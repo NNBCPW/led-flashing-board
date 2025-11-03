@@ -4,8 +4,9 @@ import imageio.v2 as imageio
 import numpy as np
 import io
 import time
+from PIL import Image
 
-# --- LED Flashing Board (Side-by-Side Layout) ---
+# --- LED Flashing Board (Fixed for GIF consistency) ---
 
 st.set_page_config(page_title="LED Flashing Board", layout="wide")
 
@@ -21,7 +22,7 @@ ON = "#f9ed32"
 OFF = "#3b3c3d"
 BG = "#141414"
 
-# 5x7 LED font map
+# 5x7 LED font
 font = {
     "A": ["01110","10001","10001","11111","10001","10001","10001"],
     "B": ["11110","10001","11110","10001","10001","10001","11110"],
@@ -68,6 +69,7 @@ def render_scene(lines):
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(BG)
     ax.axis("off")
+
     for row_idx, line in enumerate(lines):
         text = line[:cols].ljust(cols)
         for c_idx, ch in enumerate(text):
@@ -116,34 +118,49 @@ with left:
 with right:
     st.markdown("### 💡 LED Display Preview")
 
-    if not multi_scenes:
-        fig = render_scene(scenes[0])
-        st.pyplot(fig)
-    else:
-        st.write("Preview of Scene 1")
-        fig = render_scene(scenes[0])
-        st.pyplot(fig)
+    fig = render_scene(scenes[0])
+    st.pyplot(fig)
 
-# --- ANIMATION AND DOWNLOAD ---
+# --- GIF CREATION ---
+def pad_to_same_size(imgs):
+    """Ensure all images are the same size before stacking."""
+    max_w = max(i.width for i in imgs)
+    max_h = max(i.height for i in imgs)
+    uniform = []
+    for im in imgs:
+        new_im = Image.new("RGB", (max_w, max_h), (20, 20, 20))
+        new_im.paste(im, (0, 0))
+        uniform.append(new_im)
+    return uniform
+
+
 if play or download:
-    frames = []
+    pil_frames = []
     for s in scenes:
         fig = render_scene(s)
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight", dpi=150)
         buf.seek(0)
-        frames.append(imageio.imread(buf))
+        pil_frames.append(Image.open(buf))
         plt.close(fig)
+
+    # Pad all frames to same size
+    uniform_frames = pad_to_same_size(pil_frames)
 
     if play:
         img_slot = right.empty()
-        for frame in frames:
+        for frame in uniform_frames:
             img_slot.image(frame, use_column_width=True)
             time.sleep(scene_time)
 
-    if download and frames:
+    if download and uniform_frames:
         gif_bytes = io.BytesIO()
-        imageio.mimsave(gif_bytes, frames, format="GIF", duration=scene_time)
+        imageio.mimsave(
+            gif_bytes,
+            [np.array(f) for f in uniform_frames],
+            format="GIF",
+            duration=scene_time
+        )
         st.download_button(
             label="Download Animated GIF",
             data=gif_bytes.getvalue(),
