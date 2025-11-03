@@ -5,22 +5,23 @@ import numpy as np
 import io
 import time
 
-# --- LED Flashing Message Board ---
+# --- LED Flashing Board (Side-by-Side Layout) ---
 
 st.set_page_config(page_title="LED Flashing Board", layout="wide")
-st.markdown("<h1 style='text-align:center; color:#f9ed32;'>LED FLASHING BOARD</h1>", unsafe_allow_html=True)
 
-# LED style settings
+# --- Layout split ---
+left, right = st.columns([1, 2])
+
+# --- Global LED settings ---
 dot_w, dot_h = 5, 7
 dot_size = 0.8
 rows, cols = 4, 10
 char_space = 1.5
-
 ON = "#f9ed32"
 OFF = "#3b3c3d"
 BG = "#141414"
 
-# 5x7 LED font
+# 5x7 LED font map
 font = {
     "A": ["01110","10001","10001","11111","10001","10001","10001"],
     "B": ["11110","10001","11110","10001","10001","10001","11110"],
@@ -61,13 +62,12 @@ font = {
     " ": ["00000","00000","00000","00000","00000","00000","00000"]
 }
 
-# --- Function to draw one scene ---
+
 def render_scene(lines):
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(8, 4))
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(BG)
     ax.axis("off")
-
     for row_idx, line in enumerate(lines):
         text = line[:cols].ljust(cols)
         for c_idx, ch in enumerate(text):
@@ -78,36 +78,57 @@ def render_scene(lines):
                 for x in range(dot_w):
                     color = ON if char[y][x] == "1" else OFF
                     ax.add_patch(plt.Circle((x + x_offset, -y + y_offset), dot_size / 2, color=color))
-
     ax.set_xlim(-1, cols * (dot_w + char_space))
     ax.set_ylim(-rows * (dot_h + char_space) - 1, 3)
     ax.set_aspect("equal")
     return fig
 
 
-# --- Scene Inputs ---
-st.markdown("### 🎬 Create up to 4 flashing scenes")
-scenes = []
-for scene_num in range(1, 5):
-    with st.expander(f"Scene {scene_num}"):
-        line1 = st.text_input(f"Scene {scene_num} - Line 1", "").upper()
-        line2 = st.text_input(f"Scene {scene_num} - Line 2", "").upper()
-        line3 = st.text_input(f"Scene {scene_num} - Line 3", "").upper()
-        line4 = st.text_input(f"Scene {scene_num} - Line 4", "").upper()
-        scenes.append([line1, line2, line3, line4])
+# --- LEFT PANEL CONTROLS ---
+with left:
+    st.markdown("### 🎛️ LED Message Control")
 
-# --- Timing + Buttons ---
-scene_time = st.slider("⏱️ Scene duration (seconds)", 1, 10, 5)
-col1, col2 = st.columns(2)
-play = col1.button("▶️ Play Animation")
-download = col2.button("💾 Download GIF")
+    multi_scenes = st.checkbox("Enable multiple scenes")
+    scene_time = st.slider("Scene duration (seconds)", 1, 10, 5)
 
-# --- Playback ---
+    if not multi_scenes:
+        line1 = st.text_input("Line 1", "").upper()
+        line2 = st.text_input("Line 2", "").upper()
+        line3 = st.text_input("Line 3", "").upper()
+        line4 = st.text_input("Line 4", "").upper()
+        current_scene = [line1, line2, line3, line4]
+        scenes = [current_scene]
+    else:
+        scenes = []
+        for i in range(1, 5):
+            with st.expander(f"Scene {i}"):
+                l1 = st.text_input(f"Scene {i} - Line 1", "").upper()
+                l2 = st.text_input(f"Scene {i} - Line 2", "").upper()
+                l3 = st.text_input(f"Scene {i} - Line 3", "").upper()
+                l4 = st.text_input(f"Scene {i} - Line 4", "").upper()
+                scenes.append([l1, l2, l3, l4])
+
+    col1, col2 = st.columns(2)
+    play = col1.button("▶️ Play Animation")
+    download = col2.button("💾 Download GIF")
+
+# --- RIGHT PANEL LIVE DISPLAY ---
+with right:
+    st.markdown("### 💡 LED Display Preview")
+
+    if not multi_scenes:
+        fig = render_scene(scenes[0])
+        st.pyplot(fig)
+    else:
+        st.write("Preview of Scene 1")
+        fig = render_scene(scenes[0])
+        st.pyplot(fig)
+
+# --- ANIMATION AND DOWNLOAD ---
 if play or download:
     frames = []
-    st.write("Rendering scenes...")
-    for scene in scenes:
-        fig = render_scene(scene)
+    for s in scenes:
+        fig = render_scene(s)
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight", dpi=150)
         buf.seek(0)
@@ -115,8 +136,7 @@ if play or download:
         plt.close(fig)
 
     if play:
-        st.write("Previewing animation:")
-        img_slot = st.empty()
+        img_slot = right.empty()
         for frame in frames:
             img_slot.image(frame, use_column_width=True)
             time.sleep(scene_time)
