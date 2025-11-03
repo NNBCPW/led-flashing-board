@@ -1,10 +1,10 @@
 import streamlit as st
 from PIL import Image, ImageDraw
 import numpy as np
-import io, imageio
+import io, imageio, time
 
 # ---------------------------------------------------
-# FAST LED FLASHING BOARD (4 SCENES, NO FREEZE)
+# FAST LED FLASHING BOARD (Compact Window Layout)
 # ---------------------------------------------------
 st.set_page_config(page_title="LED Flashing Board", layout="wide")
 
@@ -14,12 +14,10 @@ LED_OFF = (59, 60, 61)
 BG_COLOR = (20, 20, 20)
 
 DOT_W, DOT_H = 5, 7
-DOT_SIZE = 12
-GAP = 5
-PAD = 15
-
-ROWS = 4
-COLS = 10
+DOT_SIZE = 10
+GAP = 4
+PAD = 10
+ROWS, COLS = 4, 10
 
 # ---------- FONT MAP ----------
 def mk(rows): return rows
@@ -63,7 +61,7 @@ font = {
     "9": mk(["01110","10001","10001","01111","00001","00001","01110"]),
 }
 
-# ---------- DRAW LED CHAR ----------
+# ---------- DRAW ----------
 def draw_char(draw, ch, x, y):
     pattern = font.get(ch.upper(), font[" "])
     for gy in range(DOT_H):
@@ -71,19 +69,13 @@ def draw_char(draw, ch, x, y):
             color = LED_ON if pattern[gy][gx] == "1" else LED_OFF
             cx = x + gx * (DOT_SIZE + GAP)
             cy = y + gy * (DOT_SIZE + GAP)
-            draw.ellipse(
-                [cx, cy, cx + DOT_SIZE, cy + DOT_SIZE],
-                fill=color,
-                outline=None
-            )
+            draw.ellipse([cx, cy, cx + DOT_SIZE, cy + DOT_SIZE], fill=color, outline=None)
 
-# ---------- RENDER SCENE ----------
 def render_scene(lines):
     img_w = COLS * (DOT_W * (DOT_SIZE + GAP)) + PAD * 2
     img_h = ROWS * (DOT_H * (DOT_SIZE + GAP)) + PAD * 2
     im = Image.new("RGB", (img_w, img_h), BG_COLOR)
     d = ImageDraw.Draw(im)
-
     for row, line in enumerate(lines):
         text = (line or "").upper().ljust(COLS)[:COLS]
         for col, ch in enumerate(text):
@@ -94,11 +86,10 @@ def render_scene(lines):
 
 # ---------- SIDEBAR ----------
 st.sidebar.title("⚙️ LED Scene Settings")
-
 use_scenes = st.sidebar.checkbox("Enable multiple scenes", value=False)
 scene_time = st.sidebar.slider("Seconds per scene", 1, 10, 5)
 
-# ---------- SCENE INPUTS ----------
+# ---------- INPUTS ----------
 scenes = []
 if use_scenes:
     for s in range(1, 5):
@@ -107,7 +98,7 @@ if use_scenes:
                 st.text_input(f"Scene {s} - Line 1", key=f"s{s}_l1"),
                 st.text_input(f"Scene {s} - Line 2", key=f"s{s}_l2"),
                 st.text_input(f"Scene {s} - Line 3", key=f"s{s}_l3"),
-                st.text_input(f"Scene {s} - Line 4", key=f"s{s}_l4")
+                st.text_input(f"Scene {s} - Line 4", key=f"s{s}_l4"),
             ]
         scenes.append(lines)
 else:
@@ -116,38 +107,34 @@ else:
             st.text_input("Line 1", key="l1"),
             st.text_input("Line 2", key="l2"),
             st.text_input("Line 3", key="l3"),
-            st.text_input("Line 4", key="l4")
+            st.text_input("Line 4", key="l4"),
         ]
         scenes = [lines]
 
 # ---------- BUTTONS ----------
-col1, col2 = st.columns(2)
-play = col1.button("▶ Play Animation")
-download = col2.button("💾 Download GIF")
+col1, col2 = st.columns([1, 1])
+play = col1.button("▶ Play")
+download = col2.button("💾 GIF")
 
-# ---------- DISPLAY ----------
-board_placeholder = st.empty()
+# ---------- BOARD ----------
+center_col = st.container()
+board_placeholder = center_col.empty()
+frames = [np.array(render_scene(lines)) for lines in scenes]
 
-frames = []
-for i, lines in enumerate(scenes):
-    img = render_scene(lines)
-    frames.append(np.array(img))
-    if i == 0:
-        board_placeholder.image(img, use_column_width=True)
+# ---------- DISPLAY INITIAL SCENE ----------
+board_placeholder.image(frames[0], width=600)
 
 # ---------- PLAYBACK ----------
 if play:
-    import time
-    for lines in scenes:
-        img = render_scene(lines)
-        board_placeholder.image(img, use_column_width=True)
+    for img in frames:
+        board_placeholder.image(img, width=600)
         time.sleep(scene_time)
 
-# ---------- GIF DOWNLOAD ----------
+# ---------- GIF ----------
 if download:
     buf = io.BytesIO()
     imageio.mimsave(buf, frames, format="GIF", duration=scene_time)
     st.download_button("Download LED Animation", buf.getvalue(),
                        file_name="led_board.gif", mime="image/gif")
 
-st.markdown("<hr><center>Created by NN — Fast LED Board (Streamlit + PIL)</center>", unsafe_allow_html=True)
+st.markdown("<hr><center>Compact LED Board by NN — Streamlit + PIL</center>", unsafe_allow_html=True)
