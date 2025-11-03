@@ -4,22 +4,29 @@ import numpy as np
 import io, imageio, time
 
 # ---------------------------------------------------
-# FAST LED FLASHING BOARD (Compact Window Layout)
+# COMPACT LED BOARD — 7x5 TILES, FAINT GAPS, SCENES
 # ---------------------------------------------------
-st.set_page_config(page_title="LED Flashing Board", layout="wide")
+st.set_page_config(page_title="LED Board (Tiles)", layout="wide")
 
-# ---------- CONFIG ----------
-LED_ON = (249, 237, 50)
-LED_OFF = (59, 60, 61)
-BG_COLOR = (20, 20, 20)
+# ---------- COLORS ----------
+LED_ON      = (249, 237, 50)   # center yellow you gave
+LED_OFF     = (59, 60, 61)     # off dot dark gray
+BG_COLOR    = (20, 20, 20)     # page/canvas background
+GAP_LINE    = (34, 34, 34)     # very faint gray between tiles (subtle)
 
-DOT_W, DOT_H = 5, 7
-DOT_SIZE = 10
-GAP = 4
-PAD = 10
-ROWS, COLS = 4, 10
+# ---------- GRID / TILE GEOMETRY ----------
+ROWS, COLS = 4, 10       # 4 rows of characters, 10 chars per row
+DOT_W, DOT_H = 5, 7      # each character is 5x7 dots
 
-# ---------- FONT MAP ----------
+DOT_SIZE  = 10           # diameter of a single dot (px)
+DOT_GAP   = 4            # spacing between dots (px) within a tile
+TILE_PAD  = 6            # inner padding inside each tile around dots (px)
+TILE_GAP  = 6            # faint gap between tiles (px)
+OUTER_PAD = 10           # outer padding around whole board (px)
+
+DISPLAY_WIDTH = 640      # target display width in Streamlit (keeps it compact)
+
+# ---------- 5x7 FONT ----------
 def mk(rows): return rows
 font = {
     " ": mk(["00000","00000","00000","00000","00000","00000","00000"]),
@@ -61,35 +68,64 @@ font = {
     "9": mk(["01110","10001","10001","01111","00001","00001","01110"]),
 }
 
-# ---------- DRAW ----------
-def draw_char(draw, ch, x, y):
+# ---------- TILE SIZE HELPERS ----------
+def tile_inner_w():  # dots row width
+    return DOT_W * DOT_SIZE + (DOT_W - 1) * DOT_GAP
+
+def tile_inner_h():  # dots col height
+    return DOT_H * DOT_SIZE + (DOT_H - 1) * DOT_GAP
+
+def tile_w():        # full tile including inner pad
+    return tile_inner_w() + TILE_PAD * 2
+
+def tile_h():        # full tile including inner pad
+    return tile_inner_h() + TILE_PAD * 2
+
+def board_w():
+    return OUTER_PAD * 2 + COLS * tile_w() + (COLS - 1) * TILE_GAP
+
+def board_h():
+    return OUTER_PAD * 2 + ROWS * tile_h() + (ROWS - 1) * TILE_GAP
+
+# ---------- DRAW ONE CHARACTER TILE ----------
+def draw_char_tile(draw, ch, top_left_x, top_left_y):
+    # faint gap lines: draw a subtle rectangle outline (nearly BG)
+    draw.rectangle(
+        [top_left_x - TILE_GAP/2, top_left_y - TILE_GAP/2,
+         top_left_x + tile_w() + TILE_GAP/2, top_left_y + tile_h() + TILE_GAP/2],
+        outline=GAP_LINE, width=1
+    )
+
+    # draw dots inside the tile
     pattern = font.get(ch.upper(), font[" "])
+    start_x = top_left_x + TILE_PAD
+    start_y = top_left_y + TILE_PAD
     for gy in range(DOT_H):
         for gx in range(DOT_W):
             color = LED_ON if pattern[gy][gx] == "1" else LED_OFF
-            cx = x + gx * (DOT_SIZE + GAP)
-            cy = y + gy * (DOT_SIZE + GAP)
+            cx = start_x + gx * (DOT_SIZE + DOT_GAP)
+            cy = start_y + gy * (DOT_SIZE + DOT_GAP)
             draw.ellipse([cx, cy, cx + DOT_SIZE, cy + DOT_SIZE], fill=color, outline=None)
 
+# ---------- RENDER A SCENE (4 lines) ----------
 def render_scene(lines):
-    img_w = COLS * (DOT_W * (DOT_SIZE + GAP)) + PAD * 2
-    img_h = ROWS * (DOT_H * (DOT_SIZE + GAP)) + PAD * 2
-    im = Image.new("RGB", (img_w, img_h), BG_COLOR)
+    W, H = board_w(), board_h()
+    im = Image.new("RGB", (W, H), BG_COLOR)
     d = ImageDraw.Draw(im)
-    for row, line in enumerate(lines):
+
+    for r, line in enumerate(lines):
         text = (line or "").upper().ljust(COLS)[:COLS]
-        for col, ch in enumerate(text):
-            x = PAD + col * (DOT_W * (DOT_SIZE + GAP))
-            y = PAD + row * (DOT_H * (DOT_SIZE + GAP))
-            draw_char(d, ch, x, y)
+        for c, ch in enumerate(text):
+            x = OUTER_PAD + c * (tile_w() + TILE_GAP)
+            y = OUTER_PAD + r * (tile_h() + TILE_GAP)
+            draw_char_tile(d, ch, x, y)
     return im
 
-# ---------- SIDEBAR ----------
+# ---------- SIDEBAR (compact controls) ----------
 st.sidebar.title("⚙️ LED Scene Settings")
-use_scenes = st.sidebar.checkbox("Enable multiple scenes", value=False)
-scene_time = st.sidebar.slider("Seconds per scene", 1, 10, 5)
+use_scenes  = st.sidebar.checkbox("Enable multiple scenes", value=False)
+scene_time  = st.sidebar.slider("Seconds per scene", 1, 10, 5)
 
-# ---------- INPUTS ----------
 scenes = []
 if use_scenes:
     for s in range(1, 5):
@@ -111,30 +147,30 @@ else:
         ]
         scenes = [lines]
 
-# ---------- BUTTONS ----------
+# ---------- ACTIONS ----------
 col1, col2 = st.columns([1, 1])
-play = col1.button("▶ Play")
+play     = col1.button("▶ Play")
 download = col2.button("💾 GIF")
 
-# ---------- BOARD ----------
-center_col = st.container()
-board_placeholder = center_col.empty()
+# ---------- RENDER FIRST / PREVIEW ----------
 frames = [np.array(render_scene(lines)) for lines in scenes]
-
-# ---------- DISPLAY INITIAL SCENE ----------
-board_placeholder.image(frames[0], width=600)
+board_placeholder = st.empty()
+board_placeholder.image(frames[0], width=DISPLAY_WIDTH)
 
 # ---------- PLAYBACK ----------
 if play:
     for img in frames:
-        board_placeholder.image(img, width=600)
+        board_placeholder.image(img, width=DISPLAY_WIDTH)
         time.sleep(scene_time)
 
-# ---------- GIF ----------
+# ---------- GIF DOWNLOAD ----------
 if download:
     buf = io.BytesIO()
     imageio.mimsave(buf, frames, format="GIF", duration=scene_time)
     st.download_button("Download LED Animation", buf.getvalue(),
                        file_name="led_board.gif", mime="image/gif")
 
-st.markdown("<hr><center>Compact LED Board by NN — Streamlit + PIL</center>", unsafe_allow_html=True)
+st.markdown(
+    "<hr><center>LED Board — 7×5 Tiles • Compact • Scenes • GIF • Streamlit + PIL</center>",
+    unsafe_allow_html=True
+)
